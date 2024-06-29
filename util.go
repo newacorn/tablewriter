@@ -17,7 +17,10 @@ import (
 
 var ansi = regexp.MustCompile("\033\\[(?:[0-9]{1,3}(?:;[0-9]{1,3})*)?[m|K]")
 
-func DisplayWidth(str string) int {
+func DisplayWidth(str string, before ...func(string) string) int {
+	if len(before) != 0 && before[0] != nil {
+		str = before[0](str)
+	}
 	return runewidth.StringWidth(ansi.ReplaceAllLiteralString(str, ""))
 }
 
@@ -62,8 +65,8 @@ func Title(name string) string {
 
 // Pad String
 // Attempts to place string in the center
-func Pad(s, pad string, width int) string {
-	gap := width - DisplayWidth(s)
+func Pad(s, pad string, width int, before ...func(string) string) string {
+	gap := width - DisplayWidth(s, before...)
 	if gap > 0 {
 		gapLeft := int(math.Ceil(float64(gap / 2)))
 		gapRight := gap - gapLeft
@@ -74,8 +77,8 @@ func Pad(s, pad string, width int) string {
 
 // PadRight Pad String Right position
 // This would place string at the left side of the screen
-func PadRight(s, pad string, width int) string {
-	gap := width - DisplayWidth(s)
+func PadRight(s, pad string, width int, before ...func(string) string) string {
+	gap := width - DisplayWidth(s, before...)
 	if gap > 0 {
 		return s + strings.Repeat(string(pad), gap)
 	}
@@ -84,8 +87,8 @@ func PadRight(s, pad string, width int) string {
 
 // PadLeft Pad String Left position
 // This would place string at the right side of the screen
-func PadLeft(s, pad string, width int) string {
-	gap := width - DisplayWidth(s)
+func PadLeft(s, pad string, width int, before ...func(string) string) string {
+	gap := width - DisplayWidth(s, before...)
 	if gap > 0 {
 		return strings.Repeat(string(pad), gap) + s
 	}

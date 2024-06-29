@@ -104,6 +104,7 @@ type Table struct {
 	columnsParams           []string
 	footerParams            []string
 	columnsAlign            []int
+	normalizeColFunc        func(str string) string
 }
 
 // NewWriter Start New Table
@@ -142,6 +143,9 @@ func NewWriter(writer io.Writer) *Table {
 		footerParams:  []string{},
 		columnsAlign:  []int{}}
 	return t
+}
+func (t *Table) SetNormalizeColFunc(f func(str string) string) {
+	t.normalizeColFunc = f
 }
 
 // Render table output
@@ -578,7 +582,7 @@ func (t *Table) printLineOptionalCellSeparators(nl bool, displayCellSeparator []
 
 // Return the PadRight function if align is left, PadLeft if align is right,
 // and Pad by default
-func pad(align int) func(string, string, int) string {
+func pad(align int) func(string, string, int, ...func(string) string) string {
 	padFunc := Pad
 	switch align {
 	case ALIGN_LEFT:
@@ -636,22 +640,22 @@ func (t *Table) printHeading() {
 			if is_esc_seq {
 				if !t.noWhiteSpace {
 					fmt.Fprintf(t.out, " %s %s",
-						format(padFunc(h, SPACE, v),
+						format(padFunc(h, SPACE, v, t.normalizeColFunc),
 							t.headerParams[y]), pad)
 				} else {
 					fmt.Fprintf(t.out, "%s %s",
-						format(padFunc(h, SPACE, v),
+						format(padFunc(h, SPACE, v, t.normalizeColFunc),
 							t.headerParams[y]), pad)
 				}
 			} else {
 				if !t.noWhiteSpace {
 					fmt.Fprintf(t.out, " %s %s",
-						padFunc(h, SPACE, v),
+						padFunc(h, SPACE, v, t.normalizeColFunc),
 						pad)
 				} else {
 					// the spaces between breaks the kube formatting
 					fmt.Fprintf(t.out, "%s%s",
-						padFunc(h, SPACE, v),
+						padFunc(h, SPACE, v, t.normalizeColFunc),
 						pad)
 				}
 			}
@@ -720,11 +724,11 @@ func (t *Table) printFooter() {
 
 			if is_esc_seq {
 				fmt.Fprintf(t.out, " %s %s",
-					format(padFunc(f, SPACE, v),
+					format(padFunc(f, SPACE, v, t.normalizeColFunc),
 						t.footerParams[y]), pad)
 			} else {
 				fmt.Fprintf(t.out, " %s %s",
-					padFunc(f, SPACE, v),
+					padFunc(f, SPACE, v, t.normalizeColFunc),
 					pad)
 			}
 
@@ -902,16 +906,16 @@ func (t *Table) printRow(columns [][]string, rowIdx int) {
 			// Default alignment  would use multiple configuration
 			switch t.columnsAlign[y] {
 			case ALIGN_CENTER: //
-				fmt.Fprintf(t.out, "%s", Pad(str, SPACE, t.cs[y]))
+				fmt.Fprintf(t.out, "%s", Pad(str, SPACE, t.cs[y], t.normalizeColFunc))
 			case ALIGN_RIGHT:
-				fmt.Fprintf(t.out, "%s", PadLeft(str, SPACE, t.cs[y]))
+				fmt.Fprintf(t.out, "%s", PadLeft(str, SPACE, t.cs[y], t.normalizeColFunc))
 			case ALIGN_LEFT:
-				fmt.Fprintf(t.out, "%s", PadRight(str, SPACE, t.cs[y]))
+				fmt.Fprintf(t.out, "%s", PadRight(str, SPACE, t.cs[y], t.normalizeColFunc))
 			default:
 				if decimal.MatchString(strings.TrimSpace(str)) || percent.MatchString(strings.TrimSpace(str)) {
-					fmt.Fprintf(t.out, "%s", PadLeft(str, SPACE, t.cs[y]))
+					fmt.Fprintf(t.out, "%s", PadLeft(str, SPACE, t.cs[y], t.normalizeColFunc))
 				} else {
-					fmt.Fprintf(t.out, "%s", PadRight(str, SPACE, t.cs[y]))
+					fmt.Fprintf(t.out, "%s", PadRight(str, SPACE, t.cs[y], t.normalizeColFunc))
 
 					// TODO Custom alignment per column
 					//if max == 1 || pads[y] > 0 {
@@ -1030,16 +1034,16 @@ func (t *Table) printRowMergeCells(writer io.Writer, columns [][]string, rowIdx 
 			// Default alignment  would use multiple configuration
 			switch t.columnsAlign[y] {
 			case ALIGN_CENTER: //
-				fmt.Fprintf(writer, "%s", Pad(str, SPACE, t.cs[y]))
+				fmt.Fprintf(writer, "%s", Pad(str, SPACE, t.cs[y], t.normalizeColFunc))
 			case ALIGN_RIGHT:
-				fmt.Fprintf(writer, "%s", PadLeft(str, SPACE, t.cs[y]))
+				fmt.Fprintf(writer, "%s", PadLeft(str, SPACE, t.cs[y], t.normalizeColFunc))
 			case ALIGN_LEFT:
-				fmt.Fprintf(writer, "%s", PadRight(str, SPACE, t.cs[y]))
+				fmt.Fprintf(writer, "%s", PadRight(str, SPACE, t.cs[y], t.normalizeColFunc))
 			default:
 				if decimal.MatchString(strings.TrimSpace(str)) || percent.MatchString(strings.TrimSpace(str)) {
-					fmt.Fprintf(writer, "%s", PadLeft(str, SPACE, t.cs[y]))
+					fmt.Fprintf(writer, "%s", PadLeft(str, SPACE, t.cs[y], t.normalizeColFunc))
 				} else {
-					fmt.Fprintf(writer, "%s", PadRight(str, SPACE, t.cs[y]))
+					fmt.Fprintf(writer, "%s", PadRight(str, SPACE, t.cs[y], t.normalizeColFunc))
 				}
 			}
 			fmt.Fprintf(writer, SPACE)
@@ -1069,7 +1073,7 @@ func (t *Table) parseDimension(str string, colKey, rowKey int) []string {
 	raw = getLines(str)
 	maxWidth = 0
 	for _, line := range raw {
-		if w := DisplayWidth(line); w > maxWidth {
+		if w := DisplayWidth(line, t.normalizeColFunc); w > maxWidth {
 			maxWidth = w
 		}
 	}
@@ -1095,7 +1099,7 @@ func (t *Table) parseDimension(str string, colKey, rowKey int) []string {
 		for i, para := range raw {
 			paraLines, _ := WrapString(para, maxWidth)
 			for _, line := range paraLines {
-				if w := DisplayWidth(line); w > newMaxWidth {
+				if w := DisplayWidth(line, t.normalizeColFunc); w > newMaxWidth {
 					newMaxWidth = w
 				}
 			}
